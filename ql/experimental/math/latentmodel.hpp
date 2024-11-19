@@ -582,7 +582,8 @@ namespace QuantLib {
             // function composition: composes the integrand with the density 
             //   through a product.
             return integration()->integrate(
-                [&](const std::vector<Real>& x){ return copula_.density(x) * f(x); });
+                [&](const std::vector<Real>& x) -> Real 
+                { return copula_.density(x) * f(x); });
         }
         /*! Integrates an arbitrary vector function over the density domain(i.e.
          computes its expected value).
@@ -593,7 +594,8 @@ namespace QuantLib {
                 const std::vector<Real>& v1)>& f ) const {
             detail::multiplyV M;
             return integration()->integrateV(//see note in LMIntegrators base class
-                [&](const std::vector<Real>& x){ return M(copula_.density(x), f(x)); });
+                [&](const std::vector<Real>& x) -> Real 
+                { return M(copula_.density(x), f(x)); });
         }
     protected:
         // Integrable models must provide their integrator.
