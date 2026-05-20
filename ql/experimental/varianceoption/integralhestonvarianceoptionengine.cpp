@@ -58,11 +58,11 @@ namespace QuantLib {
                       Real v0, Real eprice, Time tau, Real rtax)
     {
         Real ss=0.0;
-        std::unique_ptr<double[]> xiv(new double[2048*2048+1]);
-        double nris=0.0;
+        std::unique_ptr<Real[]> xiv(new Real[2048*2048+1]);
+        Real nris=0.0;
         int j=0,mm=0;
-        double pi=0,pi2=0;
-        double dstep=0;
+        Real pi=0,pi2=0;
+        Real dstep=0;
         Real option=0, impart=0;
 
         std::unique_ptr<Complex[]> ff(new Complex[2048*2048]);
@@ -203,13 +203,13 @@ namespace QuantLib {
                     const std::function<Real(Real)>& payoff) {
 
         Real ss=0.0;
-        std::unique_ptr<double[]> xiv(new double[2048*2048+1]);
-        std::unique_ptr<double[]> ivet(new double[2048 * 2048 + 1]);
-        double nris=0.0;
+        std::unique_ptr<Real[]> xiv(new Real[2048*2048+1]);
+        std::unique_ptr<Real[]> ivet(new Real[2048 * 2048 + 1]);
+        Real nris=0.0;
         int j=0,mm=0,k=0;
-        double pi=0,pi2=0;
+        Real pi=0,pi2=0;
 
-        double dstep=0;
+        Real dstep=0;
         Real ip=0;
         Real payoffval=0;
         Real option=0/*, impart=0*/;
