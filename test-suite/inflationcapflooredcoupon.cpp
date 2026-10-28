@@ -774,6 +774,57 @@ BOOST_AUTO_TEST_CASE(testInstrumentEquality) {
     }
 }
 
+BOOST_AUTO_TEST_CASE(testRepricingAfterMarketChange) {
+
+    BOOST_TEST_MESSAGE("Testing that capped/floored YoY coupons reprice"
+                       " after a market change...");
+
+    CommonVars vars;
+
+    RelinkableHandle<YoYInflationTermStructure> yoyHandle(vars.yoyTS);
+    vars.iir = vars.iir->clone(yoyHandle);
+
+    Size length = 5;
+    Rate capStrike = 0.035, floorStrike = 0.025;
+    Volatility vol = 0.01;
+    Size whichPricer = 0;
+
+    Leg leg = vars.makeYoYCapFlooredLeg(whichPricer, vars.startDate, length,
+                                        std::vector<Rate>(length, capStrike),
+                                        std::vector<Rate>(length, floorStrike),
+                                        vol);
+
+    Real initialNPV = CashFlows::npv(leg, (**vars.nominalTS), false);
+
+    // move the YoY market up by relinking to a flat 4% curve
+    std::vector<Date> dates = {vars.yoyTS->baseDate(),
+                               vars.yoyTS->baseDate() + 40 * Years};
+    std::vector<Rate> rates = {0.04, 0.04};
+    auto movedTS = ext::make_shared<InterpolatedYoYInflationCurve<Linear>>(
+        vars.evaluationDate, dates, rates, vars.yoyTS->frequency(), vars.dc);
+    yoyHandle.linkTo(movedTS);
+
+    Real npv = CashFlows::npv(leg, (**vars.nominalTS), false);
+
+    Leg freshLeg = vars.makeYoYCapFlooredLeg(whichPricer, vars.startDate, length,
+                                             std::vector<Rate>(length, capStrike),
+                                             std::vector<Rate>(length, floorStrike),
+                                             vol);
+    Real expectedNPV = CashFlows::npv(freshLeg, (**vars.nominalTS), false);
+
+    if (fabs(expectedNPV - initialNPV) < 1.0e2)
+        BOOST_FAIL("market change did not move the leg value:\n"
+                   << "    initial NPV:   " << initialNPV << "\n"
+                   << "    fresh leg NPV: " << expectedNPV);
+
+    if (fabs(npv - expectedNPV) > 1.0e-6)
+        BOOST_ERROR("capped/floored YoY leg not repriced after market change:\n"
+                    << "    NPV before change:       " << initialNPV << "\n"
+                    << "    NPV after change:        " << npv << "\n"
+                    << "    fresh leg NPV:           " << expectedNPV << "\n"
+                    << "    difference:              " << Real(npv - expectedNPV));
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE_END()
