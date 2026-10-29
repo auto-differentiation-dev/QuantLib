@@ -1923,7 +1923,7 @@ BOOST_AUTO_TEST_CASE(testTurnbullWakemanLastFixingToday) {
                 BOOST_CHECK_EQUAL(option.result<Real>("sigma"), 0.0);
                 auto spotVols = option.result<std::vector<Real>>("spotVols");
                 BOOST_REQUIRE_EQUAL(spotVols.size(), 1);
-                BOOST_CHECK_SMALL(spotVols.front() - 0.25, 1.0e-12);
+                QL_CHECK_SMALL(spotVols.front() - 0.25, 1.0e-12);
             }
         }
     }
