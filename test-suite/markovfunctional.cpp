@@ -1336,8 +1336,8 @@ BOOST_AUTO_TEST_CASE(testTimeZeroNumeraireAfterDateChange) {
             const Handle<YieldTermStructure>& expectedCurve =
                 useDiscountCurve ? discountCurve : curve;
             Real initial = model->numeraire(0.0, 0.0, discountCurve);
-            BOOST_CHECK_SMALL(initial - expectedCurve->discount(model->numeraireDate(), true),
-                              1.0e-12);
+            QL_CHECK_SMALL(initial - expectedCurve->discount(model->numeraireDate(), true),
+                           1.0e-12);
             for (Integer days : {1, 2}) {
                 BOOST_TEST_CONTEXT("days=" << days) {
                     Settings::instance().evaluationDate() = referenceDate + days;
@@ -1399,7 +1399,7 @@ BOOST_AUTO_TEST_CASE(testModelOutputsAfterMarketUpdate) {
             .withAdjustments(MarkovFunctional::ModelSettings::AdjustNone));
     const auto initial = model->modelOutputs();
     BOOST_REQUIRE_EQUAL(initial.marketZerorate_.size(), 1);
-    BOOST_CHECK_SMALL(initial.marketZerorate_.front() - 0.03, 1.0e-12);
+    QL_CHECK_SMALL(initial.marketZerorate_.front() - 0.03, 1.0e-12);
 
     for (Rate rate : {0.04, 0.02}) {
         BOOST_TEST_CONTEXT("rate=" << rate) {
