@@ -2354,71 +2354,79 @@ BOOST_AUTO_TEST_CASE(testSwapRateHelperWithCouponPricer) {
     // SwapRateHelper, so that the curve is bootstrapped with the same pricing
     // methodology that is later used to value swaps.
 
-    Date today(15, June, 2020);
-    Settings::instance().evaluationDate() = today;
+    // used at the end to check that the test does not leak its curve
+    ext::weak_ptr<YieldTermStructure> curve;
+    {
+        Date today(15, June, 2020);
+        Settings::instance().evaluationDate() = today;
 
-    Datum swapData[] = {
-        {2, Years, 0.015}, {5, Years, 0.020}, {10, Years, 0.025}, {20, Years, 0.030}};
+        Datum swapData[] = {
+            {2, Years, 0.015}, {5, Years, 0.020}, {10, Years, 0.025}, {20, Years, 0.030}};
 
-    Handle<OptionletVolatilityStructure> vol(ext::make_shared<ConstantOptionletVolatility>(
-        today, TARGET(), Following, 0.20, Actual365Fixed()));
-    auto pricer = ext::make_shared<BlackIborCouponPricer>(vol);
+        Handle<OptionletVolatilityStructure> vol(ext::make_shared<ConstantOptionletVolatility>(
+            today, TARGET(), Following, 0.20, Actual365Fixed()));
+        auto pricer = ext::make_shared<BlackIborCouponPricer>(vol);
 
-    RelinkableHandle<YieldTermStructure> curveHandle;
-    auto index = ext::make_shared<Euribor6M>(curveHandle);
+        RelinkableHandle<YieldTermStructure> curveHandle;
+        auto index = ext::make_shared<Euribor6M>(curveHandle);
 
-    std::vector<ext::shared_ptr<SwapRateHelper>> helpers;
-    for (auto& d : swapData) {
-        helpers.push_back(ext::make_shared<SwapRateHelper>(
-            d.rate, Period(d.n, d.units), TARGET(), Annual, ModifiedFollowing,
-            Thirty360(Thirty360::BondBasis), index, Handle<Quote>(), 0 * Days,
-            Handle<YieldTermStructure>(), Null<Natural>(), Pillar::LastRelevantDate, Date(), false,
-            std::nullopt, std::nullopt, pricer));
-    }
+        std::vector<ext::shared_ptr<SwapRateHelper>> helpers;
+        for (auto& d : swapData) {
+            helpers.push_back(ext::make_shared<SwapRateHelper>(
+                d.rate, Period(d.n, d.units), TARGET(), Annual, ModifiedFollowing,
+                Thirty360(Thirty360::BondBasis), index, Handle<Quote>(), 0 * Days,
+                Handle<YieldTermStructure>(), Null<Natural>(), Pillar::LastRelevantDate, Date(), false,
+                std::nullopt, std::nullopt, pricer));
+        }
 
-    // the supplied pricer must be attached to every coupon of the floating leg
-    // of the swap the helper builds internally
-    for (const auto& helper : helpers) {
-        for (const auto& cf : helper->swap()->floatingLeg()) {
-            auto coupon = ext::dynamic_pointer_cast<FloatingRateCoupon>(cf);
-            BOOST_REQUIRE(coupon);
-            BOOST_CHECK_MESSAGE(coupon->pricer() == pricer,
-                                "the coupon pricer was not attached to the floating leg of the "
-                                "rate helper's internal swap");
+        // the supplied pricer must be attached to every coupon of the floating leg
+        // of the swap the helper builds internally
+        for (const auto& helper : helpers) {
+            for (const auto& cf : helper->swap()->floatingLeg()) {
+                auto coupon = ext::dynamic_pointer_cast<FloatingRateCoupon>(cf);
+                BOOST_REQUIRE(coupon);
+                BOOST_CHECK_MESSAGE(coupon->pricer() == pricer,
+                                    "the coupon pricer was not attached to the floating leg of the "
+                                    "rate helper's internal swap");
+            }
+        }
+
+        // bootstrap and check self-consistency: a swap priced at its market rate
+        // with the same coupon pricer must be at par on the resulting curve
+        std::vector<ext::shared_ptr<RateHelper>> rateHelpers(helpers.begin(), helpers.end());
+        curveHandle.linkTo(ext::make_shared<PiecewiseYieldCurve<Discount, LogLinear>>(
+            today, rateHelpers, Actual365Fixed()));
+        curve = curveHandle.currentLink();
+
+        Real tolerance = 1.0e-6;
+        for (auto& d : swapData) {
+            // built to match the helper's internal swap, priced with the same pricer
+            ext::shared_ptr<VanillaSwap> swap =
+                MakeVanillaSwap(Period(d.n, d.units), index)
+                    .withFixedRate(d.rate)
+                    .withForwardStart(0 * Days)
+                    .withDiscountingTermStructure(curveHandle)
+                    .withFixedLegDayCount(Thirty360(Thirty360::BondBasis))
+                    .withFixedLegTenor(Period(Annual))
+                    .withFixedLegConvention(ModifiedFollowing)
+                    .withFixedLegTerminationDateConvention(ModifiedFollowing)
+                    .withFixedLegCalendar(TARGET())
+                    .withFixedLegEndOfMonth(false)
+                    .withFloatingLegCalendar(TARGET())
+                    .withFloatingLegEndOfMonth(false);
+            setCouponPricer(swap->floatingLeg(), pricer);
+
+            Real npv = swap->NPV();
+            if (std::fabs(npv) > tolerance)
+                BOOST_ERROR("swap priced with the bootstrapping coupon pricer is not "
+                            "at par:"
+                            << std::setprecision(12) << "\n    tenor:     " << Period(d.n, d.units)
+                            << "\n    NPV:       " << npv << "\n    tolerance: " << tolerance);
         }
     }
 
-    // bootstrap and check self-consistency: a swap priced at its market rate
-    // with the same coupon pricer must be at par on the resulting curve
-    std::vector<ext::shared_ptr<RateHelper>> rateHelpers(helpers.begin(), helpers.end());
-    curveHandle.linkTo(ext::make_shared<PiecewiseYieldCurve<Discount, LogLinear>>(
-        today, rateHelpers, Actual365Fixed()));
-
-    Real tolerance = 1.0e-6;
-    for (auto& d : swapData) {
-        // built to match the helper's internal swap, priced with the same pricer
-        ext::shared_ptr<VanillaSwap> swap =
-            MakeVanillaSwap(Period(d.n, d.units), index)
-                .withFixedRate(d.rate)
-                .withForwardStart(0 * Days)
-                .withDiscountingTermStructure(curveHandle)
-                .withFixedLegDayCount(Thirty360(Thirty360::BondBasis))
-                .withFixedLegTenor(Period(Annual))
-                .withFixedLegConvention(ModifiedFollowing)
-                .withFixedLegTerminationDateConvention(ModifiedFollowing)
-                .withFixedLegCalendar(TARGET())
-                .withFixedLegEndOfMonth(false)
-                .withFloatingLegCalendar(TARGET())
-                .withFloatingLegEndOfMonth(false);
-        setCouponPricer(swap->floatingLeg(), pricer);
-
-        Real npv = swap->NPV();
-        if (std::fabs(npv) > tolerance)
-            BOOST_ERROR("swap priced with the bootstrapping coupon pricer is not "
-                        "at par:"
-                        << std::setprecision(12) << "\n    tenor:     " << Period(d.n, d.units)
-                        << "\n    NPV:       " << npv << "\n    tolerance: " << tolerance);
-    }
+    BOOST_CHECK_MESSAGE(curve.expired(),
+                        "the bootstrapped curve is kept alive after the test");
 }
 
 BOOST_AUTO_TEST_CASE(testHelperDatesFromNonBusinessEvaluationDate) {
