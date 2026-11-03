@@ -52,6 +52,7 @@
 #include <ql/time/daycounters/actual360.hpp>
 #include <ql/time/daycounters/yearfractiontodate.hpp>
 #include <ql/utilities/dataformatters.hpp>
+#include <ql/math/solver1d.hpp>
 #include <ql/math/statistics/incrementalstatistics.hpp>
 
 #include <cmath>
@@ -1843,7 +1844,10 @@ BOOST_AUTO_TEST_CASE(testRootOfSumExponentials) {
             fCtr += solver.getFCtr() + solver.getDerivativeCtr() + solver.getSecondDerivativeCtr();
         }
 
-        if (fCtr > 15*n) {
+        // with AD types, each Solver1D::solve makes up to 3 extra evaluations
+        const Size solverAllowance =
+            QuantLib::detail::has_passive_value<Real>::value ? 3*n : 0;
+        if (fCtr > 15*n + solverAllowance) {
             BOOST_FAIL("too many function calls needed for solver " << std::get<0>(strategy));
         }
 

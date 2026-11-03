@@ -28,6 +28,7 @@
 #include <ql/math/integrals/gausslobattointegral.hpp>
 #include <ql/math/integrals/integral.hpp>
 #include <ql/math/randomnumbers/rngtraits.hpp>
+#include <ql/math/solver1d.hpp>
 #include <ql/math/statistics/incrementalstatistics.hpp>
 #include <ql/pricingengines/vanilla/analyticeuropeanengine.hpp>
 #include <ql/pricingengines/vanilla/baroneadesiwhaleyengine.hpp>
@@ -1866,19 +1867,25 @@ BOOST_AUTO_TEST_CASE(testQdPlusBoundaryConvergence) {
                 ext::shared_ptr<GeneralizedBlackScholesProcess>(),
                 Null<Size>(), solverType.first, 1e-8);
 
-            Size nrEvaluations = 0;
+            Size nrEvaluations = 0, nrSolves = 0;
 
             for (Real t=0.0; t < maturity; t+=0.1) {
                 const auto calculated = qrPlusEngine.putExerciseBoundaryAtTau(
                     S, testCase.strike, testCase.r,
                     testCase.q, sigma, maturity, t);
                 nrEvaluations += calculated.first;
+                nrSolves += (calculated.first > 0) ? 1 : 0;
             }
 
+            const bool halley =
+                   solverType.first == QdPlusAmericanEngine::Halley
+                || solverType.first == QdPlusAmericanEngine::SuperHalley;
+            // with AD types, each Solver1D::solve makes up to 3 extra evaluations
+            const Size solverAllowance =
+                (!halley && QuantLib::detail::has_passive_value<Real>::value)
+                ? 3*nrSolves : 0;
             const Size maxEvaluations =
-                (   solverType.first == QdPlusAmericanEngine::Halley
-                 || solverType.first == QdPlusAmericanEngine::SuperHalley)
-                 ? 750 : testCase.maxEvaluations;
+                (halley ? 750 : testCase.maxEvaluations) + solverAllowance;
 
             if (nrEvaluations > maxEvaluations) {
                 BOOST_FAIL("QR+ boundary approximation failed to converge "
