@@ -29,11 +29,27 @@
 #include <ql/patterns/curiouslyrecurring.hpp>
 #include <ql/errors.hpp>
 #include <algorithm>
+#include <cmath>
 #include <iomanip>
+#include <type_traits>
 
 namespace QuantLib {
 
     #define MAX_FUNCTION_EVALUATIONS 100
+
+    namespace detail {
+
+        // true for AD types with a passive value() found by ADL
+        template <class T, class = void>
+        struct has_passive_value : std::false_type {};
+
+        template <class T>
+        struct has_passive_value<
+            T, std::void_t<decltype(value(std::declval<const T&>()))>>
+        : std::is_arithmetic<
+              std::decay_t<decltype(value(std::declval<const T&>()))>> {};
+
+    }
 
     //! Base class for 1-D solvers
     /*! The implementation of this class uses the so-called
@@ -99,7 +115,7 @@ namespace QuantLib {
 
             // monotonically crescent bias, as in optionValue(volatility)
             if (close(fxMax_,0.0))
-                return root_;
+                return polish_(f, root_, -QL_MAX_REAL, QL_MAX_REAL);
             else if (fxMax_ > 0.0) {
                 xMin_ = enforceBounds_(root_ - step);
                 fxMin_ = f(xMin_);
@@ -114,12 +130,14 @@ namespace QuantLib {
             evaluationNumber_ = 2;
             while (evaluationNumber_ <= maxEvaluations_) {
                 if (fxMin_*fxMax_ <= 0.0) {
+                    const Real xMin = xMin_, xMax = xMax_;
                     if (close(fxMin_, 0.0))
-                        return xMin_;
+                        return polish_(f, xMin, xMin, xMax);
                     if (close(fxMax_, 0.0))
-                        return xMax_;
+                        return polish_(f, xMax, xMin, xMax);
                     root_ = (xMax_+xMin_)/2.0;
-                    return this->impl().solveImpl(f, accuracy);
+                    return polish_(f, this->impl().solveImpl(f, accuracy),
+                                   xMin, xMax);
                 }
                 if (std::fabs(fxMin_) < std::fabs(fxMax_)) {
                     xMin_ = enforceBounds_(xMin_+growthFactor*(xMin_ - xMax_));
@@ -186,11 +204,11 @@ namespace QuantLib {
 
             fxMin_ = f(xMin_);
             if (close(fxMin_, 0.0))
-                return xMin_;
+                return polish_(f, xMin, xMin, xMax);
 
             fxMax_ = f(xMax_);
             if (close(fxMax_, 0.0))
-                return xMax_;
+                return polish_(f, xMax, xMin, xMax);
 
             evaluationNumber_ = 2;
 
@@ -207,7 +225,7 @@ namespace QuantLib {
 
             root_ = guess;
 
-            return this->impl().solveImpl(f, accuracy);
+            return polish_(f, this->impl().solveImpl(f, accuracy), xMin, xMax);
         }
 
         /*! This method sets the maximum number of function
@@ -227,6 +245,39 @@ namespace QuantLib {
         mutable Size evaluationNumber_;
       private:
         Real enforceBounds_(Real x) const;
+        /* With automatic differentiation, the derivative of the root
+           found by the solver depends on the path it took (e.g., on
+           the initial guess) and not only on the function.  A Newton
+           step on the derivative part of f(root) only gives the root
+           the derivative of the actual zero without changing its
+           value.  The function is evaluated last at the returned
+           root, since some callers rely on the state it leaves. */
+        template <class F>
+        Real polish_(const F& f, Real root, Real xMin, Real xMax) const {
+            using Result = std::decay_t<decltype(f(root))>;
+            if constexpr (detail::has_passive_value<Result>::value) {
+                if (lowerBoundEnforced_)
+                    xMin = std::max(xMin, lowerBound_);
+                if (upperBoundEnforced_)
+                    xMax = std::min(xMax, upperBound_);
+                Real h = std::sqrt(QL_EPSILON) *
+                         std::max(Real(std::fabs(root)), Real(1.0));
+                if (root + h > xMax)
+                    h = -h;
+                if (root + h < xMin)
+                    return root;
+                Result fx = f(root + h);
+                Result fRoot = f(root);
+                Real slope = (fx - fRoot) / h;
+                if (slope == 0.0 || !std::isfinite(slope))
+                    return root;
+                // fRoot - value(fRoot) is zero, so the value is unchanged
+                Real polished = root - (fRoot - value(fRoot)) / slope;
+                f(polished);
+                return polished;
+            }
+            return root;
+        }
         Real lowerBound_{}, upperBound_{};
         bool lowerBoundEnforced_ = false, upperBoundEnforced_ = false;
     };
