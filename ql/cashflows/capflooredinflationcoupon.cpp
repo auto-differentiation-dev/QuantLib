@@ -96,6 +96,11 @@ namespace QuantLib {
 
         if (isFloored_ || isCapped_) {
             QL_REQUIRE(couponPricer, "pricer not set");
+            // the pricer can be shared, and another coupon may have used it last
+            if (underlying_ != nullptr)
+                couponPricer->initialize(*underlying_);
+            else
+                couponPricer->initialize(*this);
         }
 
         Rate floorletRate = isFloored_ ? couponPricer->floorletRate(effectiveFloor()) : 0.0;
