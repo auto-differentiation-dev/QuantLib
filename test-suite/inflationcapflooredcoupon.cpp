@@ -825,6 +825,63 @@ BOOST_AUTO_TEST_CASE(testRepricingAfterMarketChange) {
                     << "    difference:              " << Real(npv - expectedNPV));
 }
 
+BOOST_AUTO_TEST_CASE(testRateIndependentOfOtherCouponsSharingPricer) {
+
+    BOOST_TEST_MESSAGE("Testing that capped/floored YoY coupon rates don't depend"
+                       " on the other coupons sharing their pricer...");
+
+    CommonVars vars;
+
+    Size length = 5;
+    Rate capStrike = 0.035, floorStrike = 0.025;
+    // high enough for the optionlets to be worth something, and to differ across coupons
+    Volatility vol = 0.20;
+    Size whichPricer = 0;
+
+    auto makeLeg = [&]() {
+        return vars.makeYoYCapFlooredLeg(whichPricer, vars.startDate, length,
+                                         std::vector<Rate>(length, capStrike),
+                                         std::vector<Rate>(length, floorStrike),
+                                         vol);
+    };
+    auto rateOf = [](const Leg& leg, Size i) {
+        return ext::dynamic_pointer_cast<Coupon>(leg[i])->rate();
+    };
+
+    Rate firstRate = rateOf(makeLeg(), 0), lastRate = rateOf(makeLeg(), length - 1);
+    if (fabs(firstRate - lastRate) < 1.0e-5)
+        BOOST_FAIL("coupons too similar for the test to detect a mix-up:\n"
+                   << "    first coupon: " << io::rate(firstRate) << "\n"
+                   << "    last coupon:  " << io::rate(lastRate));
+
+    Leg leg = makeLeg();
+
+    for (Size i = 0; i < length; ++i)
+        rateOf(leg, i);
+
+    for (Size i = 0; i < length; ++i) {
+        // this coupon is the only one its pricer has ever seen
+        Rate expected = rateOf(makeLeg(), i);
+        Rate rate = rateOf(leg, i);
+        if (fabs(rate - expected) > 1.0e-12)
+            BOOST_ERROR("capped/floored YoY rate depends on the pricer's last coupon:\n"
+                        << "    coupon:                  " << i << "\n"
+                        << "    rate from shared pricer: " << io::rate(rate) << "\n"
+                        << "    rate from own pricer:    " << io::rate(expected) << "\n"
+                        << "    difference:              " << Real(rate - expected));
+    }
+
+    Leg npvLeg = makeLeg();
+    Real firstNPV = CashFlows::npv(npvLeg, (**vars.nominalTS), false);
+    Real secondNPV = CashFlows::npv(npvLeg, (**vars.nominalTS), false);
+
+    if (fabs(secondNPV - firstNPV) > 1.0e-6)
+        BOOST_ERROR("capped/floored YoY leg NPV changes when computed again:\n"
+                    << "    first NPV:  " << firstNPV << "\n"
+                    << "    second NPV: " << secondNPV << "\n"
+                    << "    difference: " << Real(secondNPV - firstNPV));
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 BOOST_AUTO_TEST_SUITE_END()
