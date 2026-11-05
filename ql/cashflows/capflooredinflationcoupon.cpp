@@ -134,6 +134,8 @@ namespace QuantLib {
 
 
     void CappedFlooredYoYInflationCoupon::update() {
+        calculated_ = false;
+        // always forward: calculated_ stays false when an underlying coupon calculates
         notifyObservers();
     }
 
