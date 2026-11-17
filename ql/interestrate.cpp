@@ -109,8 +109,9 @@ namespace QuantLib {
         QL_REQUIRE(compound>0.0, "positive compound factor required");
 
         Rate r = Null<Rate>();
-        if (compound==1.0) {
-            QL_REQUIRE(t>=0.0, "non negative time (" << t << ") required");
+        // only at t == 0: for t > 0 the formulas below give 0 as well, and keep the
+        // dependence on the inputs that automatic differentiation needs
+        if (compound==1.0 && t==0.0) {
             r = 0.0;
         } else {
             QL_REQUIRE(t>0.0, "positive time (" << t << ") required");
