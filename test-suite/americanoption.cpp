@@ -2662,11 +2662,11 @@ BOOST_AUTO_TEST_CASE(testBaroneAdesiWhaleyNegativeRates) {
                               ext::make_shared<EuropeanExercise>(exDate));
     europeanPut.setPricingEngine(
         ext::make_shared<AnalyticEuropeanEngine>(stochProcess));
-    BOOST_CHECK_SMALL(option.NPV() - europeanPut.NPV(), 1.0e-6);
+    QL_CHECK_SMALL(option.NPV() - europeanPut.NPV(), 1.0e-6);
 
     option.setPricingEngine(
         ext::make_shared<JuQuadraticApproximationEngine>(stochProcess));
-    BOOST_CHECK_SMALL(option.NPV() - europeanPut.NPV(), 1.0e-6);
+    QL_CHECK_SMALL(option.NPV() - europeanPut.NPV(), 1.0e-6);
 
     // also verify with a call and positive dividends
     auto callPayoff = ext::make_shared<PlainVanillaPayoff>(Option::Call, 40.0);
